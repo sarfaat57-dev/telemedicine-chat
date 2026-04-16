@@ -51,6 +51,9 @@ def login():
         password = request.form.get('password')
         role = request.form.get('role')
 
+        if not username or not password or not role:
+            return render_template('login.html')
+
         conn = sqlite3.connect('database.db')
         c = conn.cursor()
 
