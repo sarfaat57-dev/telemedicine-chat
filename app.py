@@ -20,7 +20,7 @@ def init_db():
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
+            username TEXT,
             password TEXT,
             role TEXT
         )
@@ -34,6 +34,7 @@ def init_db():
         )
     ''')
 
+    # Default users
     c.execute("INSERT OR IGNORE INTO users VALUES ('doctor', '1234', 'Doctor')")
     c.execute("INSERT OR IGNORE INTO users VALUES ('patient', '1234', 'Patient')")
 
@@ -42,21 +43,24 @@ def init_db():
 
 init_db()
 
-# 🔹 LOGIN
+# 🔹 LOGIN (UPDATED WITH ROLE)
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['user']
-        password = request.form['password']
+        username = request.form.get('user')
+        password = request.form.get('password')
+        role = request.form.get('role')
 
         conn = sqlite3.connect('database.db')
         c = conn.cursor()
-        c.execute("SELECT role FROM users WHERE username=? AND password=?", (username, password))
+
+        c.execute("SELECT role FROM users WHERE username=? AND password=? AND role=?",
+                  (username, password, role))
+
         result = c.fetchone()
         conn.close()
 
         if result:
-            role = result[0]
             return redirect(url_for('chat', user=username, role=role))
         else:
             return "Invalid Login ❌"
@@ -71,13 +75,12 @@ def chat(user, role):
     c.execute("SELECT sender, message, time FROM messages")
     messages = c.fetchall()
     conn.close()
+
     return render_template('chat.html', messages=messages, user=user, role=role)
 
 # 🔥 REAL-TIME MESSAGE
 @socketio.on('send_message')
 def handle_message(data):
-    print("Received:", data)
-
     user = data.get('user')
     msg = data.get('message')
     time = datetime.now().strftime("%H:%M")
@@ -94,10 +97,10 @@ def handle_message(data):
         'time': time
     })
 
-# 🔹 FILE UPLOAD (FIXED)
+# 🔹 FILE UPLOAD
 @app.route('/upload', methods=['POST'])
 def upload():
-    file = request.files['file']
+    file = request.files.get('file')
 
     if file:
         filename = file.filename
@@ -108,11 +111,11 @@ def upload():
 
         conn = sqlite3.connect('database.db')
         c = conn.cursor()
-        c.execute("INSERT INTO messages VALUES (?, ?, ?)", ("System", f"[FILE]::{filename}", time))
+        c.execute("INSERT INTO messages VALUES (?, ?, ?)",
+                  ("System", f"[FILE]::{filename}", time))
         conn.commit()
         conn.close()
 
-        # 🔥 FIXED (same format)
         socketio.emit('receive_message', {
             'user': 'System',
             'message': f"[FILE]::{filename}",
@@ -138,8 +141,6 @@ def clear_chat():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# 🔐 RUN
+# 🔐 RUN (NO SSL FOR DEPLOY)
 if __name__ == '__main__':
-    socketio.run(app, host='127.0.0.1', port=5000,
-                 debug=True,
-                 ssl_context=('cert.pem', 'key.pem'))
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
