@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Secure Chat</title>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial;
+            background: #0b141a;
+            color: white;
+            margin: 0;
+        }
+
+        h2 {
+            text-align: center;
+            background: #202c33;
+            padding: 15px;
+            margin: 0;
+        }
+
+        .info {
+            text-align: center;
+            font-size: 14px;
+            margin: 5px;
+            color: #ccc;
+        }
+
+        .chat-box {
+            height: 70vh;
+            overflow-y: scroll;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .msg {
+            max-width: 70%;
+            padding: 10px;
+            margin: 5px;
+            border-radius: 10px;
+            font-size: 14px;
+            word-wrap: break-word;
+        }
+
+        .me {
+            align-self: flex-end;
+            background: #005c4b;
+        }
+
+        .other {
+            align-self: flex-start;
+            background: #202c33;
+        }
+
+        .time {
+            font-size: 10px;
+            color: #aaa;
+            text-align: right;
+        }
+
+        .input-area {
+            display: flex;
+            padding: 10px;
+            background: #202c33;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        button {
+            margin-left: 10px;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 20px;
+            background: #00a884;
+            color: white;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #019875;
+        }
+
+        .file-btn {
+            background: #555;
+        }
+
+        .clear-btn {
+            background: red;
+        }
+
+        a {
+            color: #4fc3f7;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<h2>🏥 Telemedicine Chat 🔒</h2>
+<p class="info">Logged in as: {{ user }} ({{ role }})</p>
+
+<div class="chat-box" id="chat">
+
+    {% for sender, msg, time in messages %}
+        <div class="msg {% if sender == user %}me{% else %}other{% endif %}">
+            
+            <b>{{ sender }}</b><br>
+
+            {% if "[FILE]::" in msg %}
+                {% set filename = msg.split('::')[1] %}
+                📎 <a href="/uploads/{{ filename }}" target="_blank">{{ filename }}</a>
+            {% else %}
+                {{ msg }}
+            {% endif %}
+
+            <div class="time">{{ time }}</div>
+        </div>
+    {% endfor %}
+
+</div>
+
+<!-- INPUT -->
+<div class="input-area">
+    <input type="text" id="msg" placeholder="Type message...">
+    <button onclick="sendMessage()">Send</button>
+</div>
+
+<!-- FILE UPLOAD -->
+<div class="input-area">
+    <input type="file" id="fileInput">
+    <button class="file-btn" onclick="uploadFile()">Upload</button>
+    <button class="clear-btn" onclick="clearChat()">Clear</button>
+</div>
+
+<script>
+var socket = io();
+
+// SEND
+function sendMessage() {
+    let msg = document.getElementById("msg").value;
+    if (msg.trim() === "") return;
+
+    socket.emit('send_message', {
+        user: "{{ user }}",
+        message: msg
+    });
+
+    document.getElementById("msg").value = "";
+}
+
+// RECEIVE
+socket.on('receive_message', function(data) {
+    let chat = document.getElementById("chat");
+
+    let div = document.createElement("div");
+    div.className = "msg";
+
+    if (data.user === "{{ user }}") {
+        div.classList.add("me");
+    } else {
+        div.classList.add("other");
+    }
+
+    if (data.message.startsWith("[FILE]::")) {
+        let filename = data.message.split("::")[1];
+        div.innerHTML = `<b>${data.user}</b><br>
+                         📎 <a href="/uploads/${filename}" target="_blank">${filename}</a>
+                         <div class="time">${data.time}</div>`;
+    } else {
+        div.innerHTML = `<b>${data.user}</b><br>
+                         ${data.message}
+                         <div class="time">${data.time}</div>`;
+    }
+
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+});
+
+// FILE UPLOAD
+function uploadFile() {
+    let file = document.getElementById("fileInput").files[0];
+    if (!file) return;
+
+    let formData = new FormData();
+    formData.append("file", file);
+
+    fetch("/upload", {
+        method: "POST",
+        body: formData
+    });
+
+    document.getElementById("fileInput").value = "";
+}
+
+// CLEAR
+function clearChat() {
+    fetch("/clear", { method: "POST" });
+}
+
+socket.on('clear', function() {
+    document.getElementById("chat").innerHTML = "";
+});
+
+// ENTER KEY
+document.getElementById("msg").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") sendMessage();
+});
+</script>
+
+</body>
+</html>
